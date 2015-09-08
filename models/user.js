@@ -1,4 +1,5 @@
 var bcrypt = require('bcrypt');
+var tokenModel = require('../models/token');
 
 var userModel = (function() {
     var instance;
@@ -67,13 +68,10 @@ var userModel = (function() {
                         return callback({error : [err.$err]});
                     } else if (doc) {
                         if (bcrypt.compareSync(data.password, doc.password)) {
-                            return callback({
-                                success : {
-                                    user_id : doc._id,
-                                    username : doc.username,
-                                    token : 'placeholder'
-                                }
-                            });
+                            // try to get access token and login
+                            tokenModel.getInstance()
+                            .db(_db)
+                            .new(doc._id, doc.username, callback);
                         } else {
                             return callback({error : ['Please re-enter your password.']});
                         }
