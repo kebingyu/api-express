@@ -5,7 +5,9 @@ var userModel = require('../models/user');
 var tokenModel = require('../models/token');
 
 router.use(function (req, res, next) {
-    if (req.method != 'POST' || req.method != 'OPTIONS') {
+    if (req.method == 'POST' || req.method == 'OPTIONS') {
+        next();
+    } else {
         tokenModel.getInstance()
         .db(req.db)
         .expired(req.query, function(response) {
@@ -17,8 +19,6 @@ router.use(function (req, res, next) {
                 next();
             }
         });
-    } else {
-        next();
     }
 });
 
