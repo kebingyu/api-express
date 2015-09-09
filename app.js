@@ -45,6 +45,9 @@ app.use('/', rIndex);
 app.use('/v1/user', rUser);
 app.use('/login', rLogin);
 app.use('/logout', rLogout);
+// Disable 304
+// Note: for development only
+app.disable('etag');
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

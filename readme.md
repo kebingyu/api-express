@@ -1,7 +1,7 @@
 ## A simple RESTful blog api 
 
 * Built on top of Express.js
-* Use MongoDB as the database and use [monk](https://github.com/Automattic/monk) as API layer
+* Use MongoDB as the database and use [monk](https://github.com/Automattic/monk) as a thin API layer with promise support
 * Also comes with a simple validator
 
 ## Install
@@ -19,3 +19,4 @@
 ### Login/out
 
 * A POST to /login : User log in. Receive an access token. 
+* A POST to /logout : User log out. Access token required.

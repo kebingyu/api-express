@@ -2,10 +2,24 @@ var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
 var userModel = require('../models/user');
+var tokenModel = require('../models/token');
 
-router.all('/', function (req, res, next) {
-    console.log('Accessing user middleware');
-    next(); // pass control to the next handler
+router.use(function (req, res, next) {
+    if (req.method != 'POST' || req.method != 'OPTIONS') {
+        tokenModel.getInstance()
+        .db(req.db)
+        .expired(req.query, function(response) {
+            if (response.error) {
+                res.json(response);
+            } else if (response.success) {
+                res.json({error : ['Access token expired.']});
+            } else {
+                next();
+            }
+        });
+    } else {
+        next();
+    }
 });
 
 router.get('/:user_id', function(req, res, next) {

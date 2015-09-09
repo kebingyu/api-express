@@ -97,6 +97,19 @@ var tokenModel = (function() {
                         return callback({success : {loggedout : true}});
                     }
                 });
+            },
+            expired : function(data, callback) {
+                _db.get(_col)
+                .findOne({user_id : objectId(data.user_id)})
+                .on('complete', function(err, doc) {
+                    if (err) {
+                        return callback({error : [err.$err]});
+                    } else if (doc.token == data.token) {
+                        return callback({success : isExpired(doc, Date.now())});
+                    } else {
+                        return callback({error : ['Invalid access token.']});
+                    }
+                });
             }
         }
     }
