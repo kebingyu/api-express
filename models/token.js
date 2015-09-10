@@ -87,7 +87,7 @@ var tokenModel = (function() {
             remove : function(data, callback) {
                 _db.get(_col)
                 .remove({
-                    user_id : objectId(data.user_id),
+                    user_id : data.user_id,
                     token : data.token
                 })
                 .on('complete', function(err) {
@@ -100,7 +100,7 @@ var tokenModel = (function() {
             },
             expired : function(data, callback) {
                 _db.get(_col)
-                .findOne({user_id : objectId(data.user_id)})
+                .findOne({user_id : data.user_id})
                 .on('complete', function(err, doc) {
                     if (err) {
                         return callback({error : [err.$err]});

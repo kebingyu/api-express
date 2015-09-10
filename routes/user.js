@@ -23,8 +23,11 @@ router.use(function (req, res, next) {
 });
 
 router.get('/:user_id', function(req, res, next) {
-    var user_id = req.params.user_id;
-    res.json({user:user_id});
+    userModel.getInstance()
+        .db(req.db)
+        .read(req.params, function(response) {
+            res.json(response);
+        });
 });
 
 /**
@@ -51,9 +54,11 @@ router.post('/', function(req, res, next) {
 });
 
 router.put('/:user_id', function(req, res, next) {
-    // req.query, req.params
-    var user_id = req.params.user_id;
-    res.json({user:user_id});
+    userModel.getInstance()
+        .db(req.db)
+        .update(req.body, function(response) {
+            res.json(response);
+        });
 });
 
 router.delete('/:user_id', function(req, res, next) {
