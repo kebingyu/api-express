@@ -16,6 +16,13 @@ var userModel = (function() {
             + ', ' + t.getHours() + ' : ' + t.getMinutes();
         }
 
+        // convert to front-end readable format
+        function toAngularFormat(data) {
+            data.id = data._id.toString(); 
+            var date = toDate(data.created_at);
+            data.created_at = {date: date};
+        }
+
         return {
             db : function(db) {
                 _db = db;
@@ -44,9 +51,9 @@ var userModel = (function() {
                                 var now = Date.now();
                                 _db.get(_col)
                                 .insert({
-                                    username : data.username,
-                                    email : data.email,
-                                    password : bcrypt.hashSync(data.password, bcrypt.genSaltSync(10)),
+                                    username   : data.username,
+                                    email      : data.email,
+                                    password   : bcrypt.hashSync(data.password, bcrypt.genSaltSync(10)),
                                     created_at : now,
                                     updated_at : now
                                 })
@@ -56,7 +63,7 @@ var userModel = (function() {
                                     } else {
                                         return callback({
                                             success : {
-                                                'username' : doc.username,
+                                                'username'   : doc.username,
                                                 'created_at' : doc.created_at
                                             }
                                         });
@@ -74,8 +81,7 @@ var userModel = (function() {
                         if (err) {
                             return callback({error : [err.$err]});
                         } else if (doc) {
-                            var date = toDate(doc.created_at);
-                            doc.created_at = {date: date};
+                            toAngularFormat(doc)
                             return callback({success : doc});
                         } else {
                             return callback({error : ['User not found.']});
@@ -97,7 +103,7 @@ var userModel = (function() {
                                 .update(
                                     {_id : objectId(data.user_id)},
                                     {$set : {
-                                        email : data.email,
+                                        email      : data.email,
                                         updated_at : currTime
                                     }}
                                 )
@@ -110,7 +116,7 @@ var userModel = (function() {
                                         if (result > 0) {
                                             return callback({
                                                 success : {
-                                                    username : data.username,
+                                                    username   : data.username,
                                                     updated_at : currTime
                                                 }
                                             });

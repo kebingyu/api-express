@@ -22,7 +22,7 @@ var tokenModel = (function() {
             },
             new : function(user_id, username, callback) {
                 _db.get(_col)
-                .findOne({user_id : user_id})
+                .findOne({user_id : objectId(user_id)})
                 .on('complete', function(err, doc) {
                     if (err) {
                         return callback({error : [err.$err]});
@@ -31,7 +31,7 @@ var tokenModel = (function() {
                         if (isExpired(doc, currTime)) { // update the token if expired
                             _db.get(_col)
                             .findAndModify({
-                                query : {user_id : user_id},
+                                query : {user_id : objectId(user_id)},
                                 update : {
                                     token : md5(currTime),
                                     updated_at : currTime
@@ -44,7 +44,7 @@ var tokenModel = (function() {
                                 } else {
                                     return callback({
                                         success : {
-                                            user_id : doc.user_id,
+                                            user_id : doc.user_id.toString(),
                                             username : username,
                                             token : doc.token
                                         }
@@ -54,7 +54,7 @@ var tokenModel = (function() {
                         } else { // return the existing token
                             return callback({
                                 success : {
-                                    user_id : doc.user_id,
+                                    user_id : doc.user_id.toString(),
                                     username : username,
                                     token : doc.token
                                 }
@@ -64,7 +64,7 @@ var tokenModel = (function() {
                         var currTime = Date.now();
                         _db.get(_col)
                         .insert({
-                            user_id : user_id,
+                            user_id : objectId(user_id),
                             token : md5(currTime),
                             updated_at : currTime
                         })
@@ -74,7 +74,7 @@ var tokenModel = (function() {
                             } else {
                                 return callback({
                                     success : {
-                                        user_id : doc.user_id,
+                                        user_id : doc.user_id.toString(),
                                         username : username,
                                         token : doc.token
                                     }
@@ -87,7 +87,7 @@ var tokenModel = (function() {
             remove : function(data, callback) {
                 _db.get(_col)
                 .remove({
-                    user_id : data.user_id,
+                    user_id : objectId(data.user_id),
                     token : data.token
                 })
                 .on('complete', function(err) {
@@ -100,7 +100,7 @@ var tokenModel = (function() {
             },
             expired : function(data, callback) {
                 _db.get(_col)
-                .findOne({user_id : data.user_id})
+                .findOne({user_id : objectId(data.user_id)})
                 .on('complete', function(err, doc) {
                     if (err) {
                         return callback({error : [err.$err]});

@@ -30,11 +30,12 @@ var blogModel = (function() {
                 var now = Date.now();
                 _db.get(_col)
                     .insert({
-                        user_id    : data.user_id,
+                        user_id    : objectId(data.user_id),
                         title      : data.title,
                         content    : data.content,
                         created_at : now,
-                        updated_at : now
+                        updated_at : now,
+                        tags       : []
                     })
                     .on('complete', function(err, doc) {
                         if (err) {
@@ -59,7 +60,7 @@ var blogModel = (function() {
                 _db.get(_col)
                     .findOne({
                         _id     : objectId(params.blog_id),
-                        user_id : query.user_id
+                        user_id : objectId(query.user_id)
                     })
                     .on('complete', function (err, doc) {
                         if (err) {
@@ -75,17 +76,17 @@ var blogModel = (function() {
             // read all blogs for given user id
             readAll : function(data, callback) {
                 _db.get(_col)
-                    .find({user_id : data.user_id})
+                    .find({user_id : objectId(data.user_id)})
                     .on('complete', function (err, doc) {
                         if (err) {
                             return callback({error : [err.$err]});
                         } else if (doc) {
-                            var blogs = [];
+                            //var blogs = [];
                             for (var i = 0, j = doc.length; i < j; i++) {
                                 toAngularFormat(doc[i]);
-                                blogs.push(doc[i]);
+                                //blogs.push(doc[i]);
                             }
-                            return callback({success : blogs});
+                            return callback({success : doc});
                         } else {
                             return callback({error : ['Blog not found.']});
                         }
