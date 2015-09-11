@@ -2,10 +2,20 @@ var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
 var blogModel = require('../models/blog');
-var tokenModel = require('../models/token');
+var userModel = require('../models/user');
 
 router.use(function (req, res, next) {
-    tokenModel.getInstance()
+    var rules = {
+        'user_id' : 'required',
+        'token'   : 'required'
+    };
+    var msg = validator.getInstance()
+        .rules(rules)
+        .validate(req.query);
+    if (msg.length > 0) {
+        res.json({error : msg});
+    } else {
+        userModel.getInstance()
         .db(req.db)
         .expired(req.query, function(response) {
             if (response.error) {
@@ -16,6 +26,7 @@ router.use(function (req, res, next) {
                 next();
             }
         });
+    }
 });
 
 // read all blogs for given user id

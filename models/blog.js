@@ -1,4 +1,3 @@
-var tokenModel = require('../models/token');
 var objectId = require('mongodb').ObjectID;
 
 var blogModel = (function() {
