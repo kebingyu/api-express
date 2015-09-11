@@ -106,14 +106,17 @@ var userModel = (function() {
                                         return callback({error : [err.$err]});
                                     } else if (result.writeConcernError || result.writeError) {
                                         return callback({error : ['Internal error.']});
-                                    } else if (result.writeConcernError || result.writeError) {
                                     } else {
-                                        return callback({
-                                            success : {
-                                                username : data.username,
-                                                updated_at : currTime
-                                            }
-                                        });
+                                        if (result > 0) {
+                                            return callback({
+                                                success : {
+                                                    username : data.username,
+                                                    updated_at : currTime
+                                                }
+                                            });
+                                        } else {
+                                            return callback({error : ['User not found.']});
+                                        }
                                     }
                                 });
                         }

@@ -38,11 +38,13 @@ app.use(function(req, res, next){
 
 var rIndex = require('./routes/index');
 var rUser = require('./routes/user');
+var rBlog = require('./routes/blog');
 var rLogin = require('./routes/login');
 var rLogout = require('./routes/logout');
 // routes
 app.use('/', rIndex);
 app.use('/v1/user', rUser);
+app.use('/v1/blog', rBlog);
 app.use('/login', rLogin);
 app.use('/logout', rLogout);
 // Disable 304
