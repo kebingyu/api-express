@@ -75,7 +75,12 @@ var blogModel = (function() {
             },
             // read all blogs for given user id
             readAll : function(data, callback) {
-                _db.get(_col)
+                if (data.tag) {
+                    tagModel.getInstance()
+                    .db(_db)
+                    .getBlogsByTagContent(data, callback);
+                } else {
+                    _db.get(_col)
                     .find({user_id : objectId(data.user_id)})
                     .on('complete', function (err, doc) {
                         if (err) {
@@ -89,6 +94,26 @@ var blogModel = (function() {
                             return callback({error : ['Blog not found.']});
                         }
                     });
+                }
+            },
+            /**
+             * Find all blogs with given array of objectId ids  
+             */
+            readAllByIds : function(ids, callback) {
+                _db.get(_col)
+                .find({ _id : {$in : ids}} )
+                .on('complete', function (err, doc) {
+                    if (err) {
+                        return callback({error : [err.$err]});
+                    } else if (doc.length > 0) {
+                        for (var i = 0, j = doc.length; i < j; i++) {
+                            toAngularFormat(doc[i]);
+                        }
+                        return callback({success : doc});
+                    } else {
+                        return callback({success : []});
+                    }
+                });
             },
             /**
              * Update a blog

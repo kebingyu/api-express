@@ -196,6 +196,25 @@ var tagModel = (function() {
                         return callback({success : [false]});
                     }
                 });
+            },
+            getBlogsByTagContent : function(data, callback) {
+                _db.get(_col)
+                .findOne({
+                    user_id : objectId(data.user_id),
+                    content : data.tag
+                })
+                .on('complete', function(err, doc) {
+                    if (err) {
+                        return callback({error : [err.$err]});
+                    } else if (doc) {
+                        var blogModel = require('../models/blog');
+                        blogModel.getInstance()
+                        .db(_db)
+                        .readAllByIds(doc.blogs, callback);
+                    } else {
+                        return callback({success : []});
+                    }
+                });
             }
         }
     }
