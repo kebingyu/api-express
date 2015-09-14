@@ -1,7 +1,6 @@
 var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
-var blogModel = require('../models/blog');
 var userModel = require('../models/user');
 var tagModel = require('../models/tag');
 
@@ -50,3 +49,14 @@ router.post('/', function(req, res, next) {
             });
     }
 });
+
+// Delete tag from given blog
+router.delete('/:tag_id', function(req, res, next) {
+    tagModel.getInstance()
+        .db(req.db)
+        .delete(req.params, req.query, function(response) {
+            res.json(response);
+        });
+});
+
+module.exports = router;

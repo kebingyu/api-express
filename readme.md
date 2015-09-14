@@ -31,3 +31,7 @@
 * A PUT to /v1/blog/[:id] : Update blog info by blog id. Access token required.
 * A DELETE to /v1/blog/[:id] : Delete blog by blog id. Access token required.
 
+### Tag
+
+* A POST to /v1/tag : Create a new tag. Access token required.
+* A DELETE to /v1/tag/[:id] : Delete tag by tag id. Access token required.

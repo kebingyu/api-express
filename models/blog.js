@@ -1,4 +1,5 @@
 var objectId = require('mongodb').ObjectID;
+var tagModel = require('../models/tag');
 
 var blogModel = (function() {
     var instance;
@@ -80,10 +81,8 @@ var blogModel = (function() {
                         if (err) {
                             return callback({error : [err.$err]});
                         } else if (doc) {
-                            //var blogs = [];
                             for (var i = 0, j = doc.length; i < j; i++) {
                                 toAngularFormat(doc[i]);
-                                //blogs.push(doc[i]);
                             }
                             return callback({success : doc});
                         } else {
@@ -141,27 +140,115 @@ var blogModel = (function() {
              */
             delete : function(params, query, callback) {
                 _db.get(_col)
-                    .remove(
-                        {
-                            _id     : objectId(params.blog_id),
-                            user_id : query.user_id
-                        },
-                        {
-                            justOne : true
-                        }
-                    )
-                    .on('complete', function (err, result) {
-                        if (err) {
-                            return callback({error : [err.$err]});
-                        } else {
-                            if (result > 0) {
-                                return callback({success : [true]});
+                .findOne({
+                    _id     : objectId(params.blog_id),
+                    user_id : objectId(query.user_id)
+                })
+                .on('complete', function (err, doc) {
+                    if (err) {
+                        return callback({error : [err.$err]});
+                    } else if (doc) {
+                        var tags = doc.tags.map(function(t) {return t.id});
+                        _db.get(_col)
+                        .remove(
+                            { _id     : doc._id },
+                            { justOne : true }
+                        )
+                        .on('complete', function (err, result) {
+                            if (err) {
+                                return callback({error : [err.$err]});
+                            } else if (result > 0) {
+                                if (tags.length > 0) {
+                                    tagModel.getInstance()
+                                    .db(_db)
+                                    .deleteBlog(tags, doc._id.toString(), callback);
+                                } else {
+                                    return callback({success : [true]});
+                                }
                             } else {
                                 return callback({error : ['Blog not found.']});
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        return callback({error : ['Blog not found.']});
+                    }
+                });
             },
+            /**
+             * Add tag to given blog
+             *
+             * tag : tag document
+             */
+            addTag : function(blog_id, tag, callback) {
+                _db.get(_col)
+                .update(
+                    {_id : objectId(blog_id)},
+                    {$push : {
+                        tags: {
+                            id : tag._id,
+                            content : tag.content
+                        }
+                    }}
+                )
+                .on('complete', function(err, result) {
+                    if (err) {
+                        return callback({error : [err.$err]});
+                    } else if (result.writeConcernError || result.writeError) {
+                        return callback({error : ['Internal error.']});
+                    } else {
+                        if (result > 0) {
+                            return callback({
+                                success : {
+                                    id : tag._id.toString(),
+                                    content : tag.content
+                                }
+                            });
+                        } else {
+                            return callback({error : ['Blog not found.']});
+                        }
+                    }
+                });
+            },
+            /**
+             * Delete tag from blog's tags array
+             */
+            deleteTag : function(tag_id, data, callback) {
+                _db.get(_col)
+                .findOne({
+                    _id     : objectId(data.blog_id),
+                    user_id : objectId(data.user_id)
+                })
+                .on('complete', function (err, doc) {
+                    if (err) {
+                        return callback({error : [err.$err]});
+                    } else if (doc) {
+                        _db.get(_col)
+                        .update(
+                            {_id : doc._id},
+                            {$pull : {
+                                tags: {
+                                    id : objectId(tag_id)
+                                }
+                            }}
+                        )
+                        .on('complete', function(err, result) {
+                            if (err) {
+                                return callback({error : [err.$err]});
+                            } else if (result.writeConcernError || result.writeError) {
+                                return callback({error : ['Internal error.']});
+                            } else {
+                                if (result > 0) {
+                                    return callback({success : [true]});
+                                } else {
+                                    return callback({success : [false]});
+                                }
+                            }
+                        });
+                    } else {
+                        return callback({error : ['Blog not found.']});
+                    }
+                });
+            }
         }
     }
 
