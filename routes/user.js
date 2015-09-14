@@ -1,7 +1,6 @@
 var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
-var userModel = require('../models/user');
 var UserModel = require('../models/User');
 
 router.use(function (req, res, next) {
