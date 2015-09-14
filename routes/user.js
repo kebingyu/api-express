@@ -2,6 +2,7 @@ var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
 var userModel = require('../models/user');
+var UserModel = require('../models/User');
 
 router.use(function (req, res, next) {
     if (req.method == 'POST' || req.method == 'OPTIONS') {
@@ -17,27 +18,39 @@ router.use(function (req, res, next) {
         if (msg.length > 0) {
             res.json({error : msg});
         } else {
-            userModel.getInstance()
-            .db(req.db)
-            .expired(req.query, function(response) {
-                if (response.error) {
-                    res.json(response);
-                } else if (response.success) {
-                    res.json({error : ['Access token expired.']});
-                } else {
-                    next();
-                }
+            var user = new UserModel(req.db);
+
+            user.expired(req.query);
+
+            user
+            .on('allowAccess', function(response) {
+                next();
+            })
+            .on('error.database', function(response) {
+                res.json(response);
+            })
+            .on('error.validation', function(response) {
+                res.json(response);
             });
         }
     }
 });
 
 router.get('/:user_id', function(req, res, next) {
-    userModel.getInstance()
-        .db(req.db)
-        .read(req.params, function(response) {
-            res.json(response);
-        });
+    var user = new UserModel(req.db);
+
+    user.read(req.params);
+
+    user
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 /**
@@ -55,20 +68,38 @@ router.post('/', function(req, res, next) {
     if (msg.length > 0) {
         res.json({error : msg});
     } else {
-        userModel.getInstance()
-            .db(req.db)
-            .new(req.body, function(response) {
-                res.json(response);
-            });
+        var user = new UserModel(req.db);
+
+        user.new(req.body);
+
+        user
+        .on('done', function(response) {
+            res.json(response);
+        })
+        .on('error.database', function(response) {
+            res.json(response);
+        })
+        .on('error.validation', function(response) {
+            res.json(response);
+        });
     }
 });
 
 router.put('/:user_id', function(req, res, next) {
-    userModel.getInstance()
-        .db(req.db)
-        .update(req.body, function(response) {
-            res.json(response);
-        });
+    var user = new UserModel(req.db);
+
+    user.update(req.body);
+
+    user
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 router.delete('/:user_id', function(req, res, next) {

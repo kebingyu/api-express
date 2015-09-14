@@ -1,7 +1,7 @@
 var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
-var userModel = require('../models/user');
+var UserModel = require('../models/User');
 
 /**
  * Logout
@@ -17,11 +17,20 @@ router.post('/', function(req, res, next) {
     if (msg.length > 0) {
         res.json({error : msg});
     } else {
-        userModel.getInstance()
-            .db(req.db)
-            .logout(req.body, function(response) {
-                res.json(response);
-            });
+        var user = new UserModel(req.db);
+
+        user.logout(req.body);
+
+        user
+        .on('done', function(response) {
+            res.json(response);
+        })
+        .on('error.database', function(response) {
+            res.json(response);
+        })
+        .on('error.validation', function(response) {
+            res.json(response);
+        });
     }
 });
 
