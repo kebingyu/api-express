@@ -3,6 +3,7 @@ var router = express.Router();
 var validator = require('../services/validator');
 var UserModel = require('../models/User');
 var tagModel = require('../models/tag');
+var TagModel = require('../models/TagModel');
 
 router.use(function (req, res, next) {
     var rules = {
@@ -45,11 +46,20 @@ router.post('/', function(req, res, next) {
     if (msg.length > 0) {
         res.json({error : msg});
     } else {
-        tagModel.getInstance()
-            .db(req.db)
-            .new(req.body, function(response) {
-                res.json(response);
-            });
+        var tag = new TagModel(req.db);
+
+        tag.new(req.body);
+
+        tag
+        .on('done', function(response) {
+            res.json(response);
+        })
+        .on('error.database', function(response) {
+            res.json(response);
+        })
+        .on('error.validation', function(response) {
+            res.json(response);
+        });
     }
 });
 
