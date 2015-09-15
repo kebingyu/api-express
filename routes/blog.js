@@ -2,8 +2,8 @@ var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
 var blogModel = require('../models/blog');
-var userModel = require('../models/user');
 var tagModel = require('../models/tag');
+var UserModel = require('../models/User');
 
 router.use(function (req, res, next) {
     var rules = {
@@ -11,21 +11,24 @@ router.use(function (req, res, next) {
         'token'   : 'required'
     };
     var msg = validator.getInstance()
-        .rules(rules)
-        .validate(req.query);
+    .rules(rules)
+    .validate(req.query);
     if (msg.length > 0) {
         res.json({error : msg});
     } else {
-        userModel.getInstance()
-        .db(req.db)
-        .expired(req.query, function(response) {
-            if (response.error) {
-                res.json(response);
-            } else if (response.success) {
-                res.json({error : ['Access token expired.']});
-            } else {
-                next();
-            }
+        var user = new UserModel(req.db);
+
+        user.expired(req.query);
+
+        user
+        .on('allowAccess', function(response) {
+            next();
+        })
+        .on('error.database', function(response) {
+            res.json(response);
+        })
+        .on('error.validation', function(response) {
+            res.json(response);
         });
     }
 });

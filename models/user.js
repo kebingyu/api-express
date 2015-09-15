@@ -1,271 +1,293 @@
-var bcrypt = require('bcrypt');
-var md5 = require('md5');
-var objectId = require('mongodb').ObjectID;
+var util     = require('util'), 
+    event    = require('events'), 
+    bcrypt   = require('bcrypt'), 
+    md5      = require('md5'), 
+    objectId = require('mongodb').ObjectID;
 
-var userModel = (function() {
-    var instance;
+function UserModel(db) {
+    this._db = db; // mongo connection
 
-    var _db; // mongo connection
+    this._col = 'user'; // mongo collection
 
-    var _col = 'user'; // mongo collection
+    this._ttl = 1800000; // token TTL in milliseconds (30 mins)
 
-    var _ttl = 1800000; // token TTL in milliseconds (30 mins)
+    event.EventEmitter.call(this);
+}
 
-    function init() {
-        function toDate(timestamp) {
-            var t = new Date(timestamp);
-            return (t.getMonth() + 1) + '/' + t.getDate() + '/' + t.getFullYear()
-            + ', ' + t.getHours() + ' : ' + t.getMinutes();
-        }
+util.inherits(UserModel, event.EventEmitter);
 
-        // convert to front-end readable format
-        function toAngularFormat(data) {
-            data.id = data._id.toString(); 
-            var date = toDate(data.created_at);
-            data.created_at = {date: date};
-        }
+UserModel.prototype.toDate = function(timestamp) {
+    var t = new Date(timestamp);
+    return (t.getMonth() + 1) + '/' + t.getDate() + '/' + t.getFullYear()
+    + ', ' + t.getHours() + ' : ' + t.getMinutes();
+};
 
-        // check if access token is expired
-        function isExpired(data, currTime) {
-            return data.updated_at + _ttl < currTime;
-        }
+// convert to front-end readable format
+UserModel.prototype.toAngularFormat = function(data) {
+    data.id = data._id.toString(); 
+    var date = this.toDate(data.created_at);
+    data.created_at = {date: date};
+};
 
-        function refreshToken(doc, callback) {
-            var currTime = Date.now(),
-                token = md5(currTime);
-            _db.get(_col)
-            .update(
-                {_id : doc._id},
-                {$set : {
-                    access_token : {
-                        value : token,
-                        updated_at : currTime
+UserModel.prototype.isExpired = function(data, currTime) {
+    return data.updated_at + this._ttl < currTime;
+};
+
+UserModel.prototype.refreshToken = function(doc) {
+    var currTime = Date.now(),
+        token = md5(currTime),
+        self = this;
+
+    self._db.get(self._col)
+    .update(
+        {_id : doc._id},
+        {$set : {
+            access_token : {
+                value : token,
+                updated_at : currTime
+            }
+        }}
+    )
+    .on('complete', function(err, result) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (result.writeConcernError || result.writeError) {
+            self.emit('error.database', {error : ['Internal error.']});
+        } else {
+            if (result > 0) {
+                self.emit('done', {
+                    success : {
+                        user_id  : doc._id.toString(),
+                        username : doc.username,
+                        token    : token
                     }
-                }}
-            )
-            .on('complete', function(err, result) {
-                if (err) {
-                    return callback({error : [err.$err]});
-                } else if (result.writeConcernError || result.writeError) {
-                    return callback({error : ['Internal error.']});
-                } else {
-                    if (result > 0) {
-                        return callback({
-                            success : {
-                                user_id  : doc._id.toString(),
-                                username : doc.username,
-                                token    : token
-                            }
-                        });
-                    } else {
-                        return callback({error : ['User not found.']});
-                    }
+                });
+            } else {
+                self.emit('error.validation', {error : ['User not found.']});
+            }
+        }
+    });
+};
+
+UserModel.prototype.login = function(data) {
+    var self = this;
+
+    self._db.get(self._col)
+    .findOne({username : data.username})
+    .on('complete', function (err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc) {
+            if (bcrypt.compareSync(data.password, doc.password)) {
+                if (doc.access_token.value && !self.isExpired(doc.access_token, Date.now())) {
+                    // return the existing token
+                    self.emit('done', {
+                        success : {
+                            user_id  : doc.user_id.toString(),
+                            username : doc.username,
+                            token    : doc.access_token.value
+                        }
+                    });
+                } else { // let's refresh access token
+                    self.refreshToken(doc);
                 }
-            });
+            } else {
+                self.emit('error.validation', {error : ['Please re-enter your password.']});
+            }
+        } else {
+            self.emit('error.validation', {error : ['Please re-enter your password.']});
         }
+    });
+};
 
-        return {
-            db : function(db) {
-                _db = db;
-                return this;
-            },
-            /**
-             * Register new user  
-             */
-            new : function(data, callback) {
-                // validate uniqueness of "username"
-                _db.get(_col)
-                .findOne({username : data.username})
-                .on('complete', function (err, doc) {
-                    if (err) {
-                        return callback({error : [err.$err]});
-                    } else if (doc) {
-                        return callback({error : ['This user name has already been taken.']});
-                    } else {
-                        // validate uniqueness of "email"
-                        _db.get(_col)
-                        .findOne({email : data.email})
-                        .on('complete', function (err, doc) {
-                            if (err) {
-                                return callback({error : [err.$err]});
-                            } else if (doc) {
-                                return callback({error : ['This email address has already been taken.']});
-                            } else {
-                                // create new user
-                                var now = Date.now();
-                                _db.get(_col)
-                                .insert({
-                                    username   : data.username,
-                                    email      : data.email,
-                                    password   : bcrypt.hashSync(data.password, bcrypt.genSaltSync(10)),
-                                    created_at : now,
-                                    updated_at : now,
-                                    access_token : {
-                                        value : '',
-                                        updated_at : ''
-                                    }
-                                })
-                                .on('complete', function(err, doc) {
-                                    if (err) {
-                                        return callback({error : [err.$err]});
-                                    } else {
-                                        return callback({
-                                            success : {
-                                                'username'   : doc.username,
-                                                'created_at' : doc.created_at
-                                            }
-                                        });
-                                    }
-                                }); // end of insert
-                            }
-                        }); // end of validate email
-                    }
-                }); // end of validate username
-            },
-            /**
-             * Read user profile by id  
-             */
-            read : function(data, callback) {
-                _db.get(_col)
-                    .findOne({_id : objectId(data.user_id)})
-                    .on('complete', function (err, doc) {
-                        if (err) {
-                            return callback({error : [err.$err]});
-                        } else if (doc) {
-                            toAngularFormat(doc)
-                            return callback({success : doc});
-                        } else {
-                            return callback({error : ['User not found.']});
-                        }
-                    });
-            },
-            /**
-             * Update user profile  
-             * currently only email can be updated
-             */
-            update : function(data, callback) {
-                _db.get(_col)
-                    .findOne({email : data.email})
-                    .on('complete', function (err, doc) {
-                        if (err) {
-                            return callback({error : [err.$err]});
-                        } else if (doc) {
-                            return callback({error : ['This email address has already been taken.']});
-                        } else { // this email is not taken
-                            var currTime = Date.now();
-                            _db.get(_col)
-                                .update(
-                                    {_id : objectId(data.user_id)},
-                                    {$set : {
-                                        email      : data.email,
-                                        updated_at : currTime
-                                    }}
-                                )
-                                .on('complete', function(err, result) {
-                                    if (err) {
-                                        return callback({error : [err.$err]});
-                                    } else if (result.writeConcernError || result.writeError) {
-                                        return callback({error : ['Internal error.']});
-                                    } else {
-                                        if (result > 0) {
-                                            return callback({
-                                                success : {
-                                                    username   : data.username,
-                                                    updated_at : currTime
-                                                }
-                                            });
-                                        } else {
-                                            return callback({error : ['User not found.']});
-                                        }
-                                    }
-                                });
-                        }
-                    });
-            },
-            login : function(data, callback) {
-                _db.get(_col)
-                .findOne({username : data.username})
-                .on('complete', function (err, doc) {
-                    if (err) {
-                        return callback({error : [err.$err]});
-                    } else if (doc) {
-                        if (bcrypt.compareSync(data.password, doc.password)) {
-                            if (doc.access_token.value && !isExpired(doc.access_token, Date.now())) {
-                                // return the existing token
-                                return callback({
-                                    success : {
-                                        user_id  : doc.user_id.toString(),
-                                        username : doc.username,
-                                        token    : doc.access_token.value
-                                    }
-                                });
-                            } else { // let's refresh access token
-                                refreshToken(doc, callback);
-                            }
-                        } else {
-                            return callback({error : ['Please re-enter your password.']});
-                        }
-                    } else {
-                        return callback({error : ['Please re-enter your password.']});
-                    }
-                });
-            },
-            logout : function(data, callback) {
-                _db.get(_col)
-                .update(
-                    {
-                        _id : objectId(data.user_id),
-                        "access_token.value" : data.token
-                    },
-                    {$set : {
-                        access_token : {
-                            value : '',
-                            updated_at : ''
-                        }
-                    }}
-                )
-                .on('complete', function(err, result) {
-                    if (err) {
-                        return callback({error : [err.$err]});
-                    } else if (result.writeConcernError || result.writeError) {
-                        return callback({error : ['Internal error.']});
-                    } else {
-                        if (result > 0) {
-                            return callback({success : {loggedout : true}});
-                        } else {
-                            return callback({error : ['Invalid access token.']});
-                        }
-                    }
-                });
-            },
-            /**
-             * Validate if access token is expired  
-             */
-            expired : function(data, callback) {
-                _db.get(_col)
-                .findOne({_id : objectId(data.user_id)})
-                .on('complete', function(err, doc) {
-                    if (err) {
-                        return callback({error : [err.$err]});
-                    } else if (doc.access_token.value == data.token) {
-                        return callback({success : isExpired(doc.access_token, Date.now())});
-                    } else {
-                        return callback({error : ['Invalid access token.']});
-                    }
-                });
+UserModel.prototype.logout = function(data, callback) {
+    var self = this;
+
+    self._db.get(self._col)
+    .update(
+        {
+            _id : objectId(data.user_id),
+            "access_token.value" : data.token
+        },
+        {$set : {
+            access_token : {
+                value : '',
+                updated_at : ''
+            }
+        }}
+    )
+    .on('complete', function(err, result) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (result.writeConcernError || result.writeError) {
+            self.emit('error.database', {error : ['Internal error.']});
+        } else {
+            if (result > 0) {
+                self.emit('done', {success : {loggedout : true}});
+            } else {
+                self.emit('error.validation', {error : ['Invalid access token.']});
             }
         }
-    }
+    });
+};
 
-    return {
-        getInstance : function() {
-            if (!instance) {
-                instance = init();
-            }
-            return instance;
+UserModel.prototype.usernameExists = function(username) {
+    var self = this;
+    self._db.get(self._col)
+    .findOne({username : username})
+    .on('complete', function (err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc) {
+            self.emit('error.validation', {error : ['This user name has already been taken.']});
+        } else {
+            self.emit('usernameNotExists');
         }
-    }
+    });
+};
 
-})();
+UserModel.prototype.emailExists = function(email) {
+    var self = this;
+    self._db.get(self._col)
+    .findOne({email : email})
+    .on('complete', function (err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc) {
+            self.emit('error.validation', {error : ['This email address has already been taken.']});
+        } else {
+            self.emit('emailNotExists');
+        }
+    });
+};
 
-module.exports = userModel;
+/**
+ * Register new user  
+ */
+UserModel.prototype.new = function(data) {
+    var self = this;
+
+    // validate uniqueness of "username"
+    self.usernameExists(data.username);
+
+    self
+    .on('usernameNotExists', function() {
+        // validate uniqueness of "email"
+        self.emailExists(data.email);
+    })
+    .on('emailNotExists', function() {
+        // create new user
+        var now = Date.now();
+        self._db.get(self._col)
+        .insert({
+            username   : data.username,
+            email      : data.email,
+            password   : bcrypt.hashSync(data.password, bcrypt.genSaltSync(10)),
+            created_at : now,
+            updated_at : now,
+            access_token : {
+                value : '',
+                updated_at : ''
+            }
+        })
+        .on('complete', function(err, doc) {
+            if (err) {
+                self.emit('error.database', {error : [err.$err]});
+            } else if (doc) {
+                self.emit('done', {
+                    success : {
+                        'username'   : doc.username,
+                        'created_at' : doc.created_at
+                    }
+                });
+            } else {
+                self.emit('error.database', {error : ['Internal error.']});
+            }
+        });
+    });
+};
+
+/**
+ * Read user profile by id  
+ */
+UserModel.prototype.read = function(data) {
+    var self = this;
+
+    self._db.get(self._col)
+    .findOne({_id : objectId(data.user_id)})
+    .on('complete', function (err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc) {
+            self.toAngularFormat(doc);
+            self.emit('done', {success : doc});
+        } else {
+            self.emit('error.validation', {error : ['User not found.']});
+        }
+    });
+};
+
+/**
+ * Update user profile  
+ * currently only email can be updated
+ */
+UserModel.prototype.update = function(data) {
+    var self = this;
+
+    self.emailExists(data.email);
+
+    self.on('emailNotExists', function() {
+        var currTime = Date.now();
+        self._db.get(self._col)
+        .update(
+            {_id : objectId(data.user_id)},
+            {$set : {
+                email      : data.email,
+                updated_at : currTime
+            }}
+        )
+        .on('complete', function(err, result) {
+            if (err) {
+                self.emit('error.database', {error : [err.$err]});
+            } else if (result.writeConcernError || result.writeError) {
+                self.emit('error.database', {error : ['Internal error.']});
+            } else {
+                if (result > 0) {
+                    self.emit('done', {
+                        success : {
+                            username   : data.username,
+                            updated_at : currTime
+                        }
+                    });
+                } else {
+                    self.emit('error.validation', {error : ['User not found.']});
+                }
+            }
+        });
+    });
+};
+
+/**
+ * Validate if access token is expired  
+ */
+UserModel.prototype.expired = function(data) {
+    var self = this;
+
+    self._db.get(self._col)
+    .findOne({_id : objectId(data.user_id)})
+    .on('complete', function(err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc.access_token.value == data.token) {
+            if (self.isExpired(doc.access_token, Date.now())) {
+                self.emit('error.validation', {error : ['Access token expired.']});
+            } else {
+                self.emit('allowAccess');
+            }
+        } else {
+            self.emit('error.validation', {error : ['Invalid access token.']});
+        }
+    });
+};
+
+module.exports = UserModel;
