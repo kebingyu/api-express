@@ -1,7 +1,6 @@
 var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
-var blogModel = require('../models/blog');
 var BlogModel = require('../models/BlogModel');
 var UserModel = require('../models/UserModel');
 
@@ -82,11 +81,20 @@ router.post('/', function(req, res, next) {
     if (msg.length > 0) {
         res.json({error : msg});
     } else {
-        blogModel.getInstance()
-            .db(req.db)
-            .new(req.body, function(response) {
-                res.json(response);
-            });
+        var blog = new BlogModel(req.db);
+
+        blog.new(req.body);
+
+        blog
+        .on('done', function(response) {
+            res.json(response);
+        })
+        .on('error.database', function(response) {
+            res.json(response);
+        })
+        .on('error.validation', function(response) {
+            res.json(response);
+        });
     }
 });
 
@@ -109,11 +117,20 @@ router.put('/:blog_id', function(req, res, next) {
 });
 
 router.delete('/:blog_id', function(req, res, next) {
-    blogModel.getInstance()
-        .db(req.db)
-        .delete(req.params, req.query, function(response) {
-            res.json(response);
-        });
+    var blog = new BlogModel(req.db);
+
+    blog.delete(req.params, req.query);
+
+    blog
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 module.exports = router;

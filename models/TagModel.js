@@ -208,6 +208,9 @@ TagModel.prototype.deleteById = function(tag_id) {
     });
 };
 
+/**
+ * For view blogs by tag  
+ */
 TagModel.prototype.getBlogsByTagContent = function(data, emitter) {
     var self = this;
 
@@ -226,4 +229,56 @@ TagModel.prototype.getBlogsByTagContent = function(data, emitter) {
         }
     });
 };
+
+/**
+ * Delete blog id from tag's blogs array. Used by BlogModel when 
+ * deleting a blog.
+ */
+TagModel.prototype.deleteBlog = function(tags, blog_id, emitter) {
+    var self = this;
+
+    self._db.get(self._col)
+    .update(
+        {_id : {$in : tags}},
+        {$pull : { blogs: objectId(blog_id) }},
+        {multi : true}
+    )
+    .on('complete', function(err, result) {
+        if (err) {
+            emitter.emit('error.database', {error : [err.$err]});
+        } else if (result.writeConcernError || result.writeError) {
+            emitter.emit('error.database', {error : ['Internal error.']});
+        } else if (result > 0) {
+            // Some tags are updated. Clean up tags with empty blogs array
+            emitter.emit('done.deleteBlog', tags);
+        } else {
+            // This blog owns no tags. We are done.
+            emitter.emit('done', {success : [true]});
+        }
+    });
+};
+
+/**
+ *  Remove any tags with empty blogs array. Used by BlogModel when
+ *  deleting a blog.
+ */
+TagModel.prototype.removeOrphanTags = function(tags, emitter) {
+    var self = this;
+
+    self._db.get(self._col)
+    .remove(
+        {
+            _id : {$in : tags},
+            blogs : {$size : 0}
+        }
+    )
+    .on('complete', function (err, result) {
+        if (err) {
+            emitter.emit('error.database', {error : [err.$err]});
+        } else {
+            emitter.emit('done.removeOrphanTags', {success : [true]});
+        }
+    });
+};
+
 module.exports = TagModel;

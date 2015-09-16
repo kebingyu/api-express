@@ -13,6 +13,38 @@ function BlogModel(db) {
 util.inherits(BlogModel, event.EventEmitter);
 
 /**
+ * Create a new blog
+ *
+ * data : post request body
+ */
+BlogModel.prototype.new = function(data) {
+    var self = this;
+
+    var now = Date.now();
+    self._db.get(self._col)
+    .insert({
+        user_id    : objectId(data.user_id),
+        title      : data.title,
+        content    : data.content,
+        created_at : now,
+        updated_at : now,
+        tags       : []
+    })
+    .on('complete', function(err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else {
+            self.emit('done', {
+                success : {
+                    'id'         : doc._id.toString(),
+                    'created_at' : doc.created_at
+                }
+            });
+        }
+    });
+};
+
+/**
  * Read blog by blog id
  *
  * params : request params
@@ -126,6 +158,57 @@ BlogModel.prototype.update = function(params, body) {
         }
     });
 };
+
+/**
+ * Delete blog by blog id, also update the embedded
+ * relationship array
+ *
+ * params : request params
+ * query  : request query
+ */
+BlogModel.prototype.delete = function(params, query) {
+    var self = this;
+
+    self.findById(params.blog_id, query.user_id);
+
+    self
+    .on('done.findById', function(doc) {
+        // Delete this blog document
+        self._db.get(self._col)
+        .remove(
+            { _id     : doc._id },
+            { justOne : true }
+        )
+        .on('complete', function (err, result) {
+            if (err) {
+                self.emit('error.database', {error : [err.$err]});
+            } else if (result > 0) {
+                var tags = doc.tags.map(function(t) {return t.id});
+                if (tags.length > 0) {
+                    // If the blog contains any tags,
+                    // update the relationship as well
+                    var TagModel = require('../models/TagModel');
+                    var tag = new TagModel(self._db);
+                    tag.deleteBlog(tags, doc._id.toString(), self);
+                } else {
+                    // This blog owns no tag.
+                    self.emit('done', {success : [true]});
+                }
+            } else {
+                self.emit('error.validation', {error : ['Blog not found.']});
+            }
+        });
+    })
+    .on('done.deleteBlog', function(tags) {
+        var TagModel = require('../models/TagModel');
+        var tag = new TagModel(self._db);
+        tag.removeOrphanTags(tags, self);
+    })
+    .on('done.removeOrphanTags', function(response) {
+        self.emit('done', response);
+    });
+};
+
 
 /**
  * Add tag to given blog
