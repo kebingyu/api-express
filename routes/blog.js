@@ -2,7 +2,7 @@ var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
 var blogModel = require('../models/blog');
-var tagModel = require('../models/tag');
+var BlogModel = require('../models/BlogModel');
 var UserModel = require('../models/User');
 
 router.use(function (req, res, next) {
@@ -35,20 +35,38 @@ router.use(function (req, res, next) {
 
 // read all blogs for given user id
 router.get('/', function(req, res, next) {
-    blogModel.getInstance()
-        .db(req.db)
-        .readAll(req.query, function(response) {
-            res.json(response);
-        });
+    var blog = new BlogModel(req.db);
+
+    blog.readAll(req.query);
+
+    blog
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 // read blog by blog id
 router.get('/:blog_id', function(req, res, next) {
-    blogModel.getInstance()
-        .db(req.db)
-        .read(req.params, req.query, function(response) {
-            res.json(response);
-        });
+    var blog = new BlogModel(req.db);
+
+    blog.read(req.params, req.query);
+
+    blog
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 // create new blog
@@ -74,11 +92,20 @@ router.post('/', function(req, res, next) {
 
 // update blog
 router.put('/:blog_id', function(req, res, next) {
-    blogModel.getInstance()
-        .db(req.db)
-        .update(req.params, req.body, function(response) {
-            res.json(response);
-        });
+    var blog = new BlogModel(req.db);
+
+    blog.update(req.params, req.body);
+
+    blog
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 router.delete('/:blog_id', function(req, res, next) {

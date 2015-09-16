@@ -13,14 +13,127 @@ function BlogModel(db) {
 util.inherits(BlogModel, event.EventEmitter);
 
 /**
+ * Read blog by blog id
+ *
+ * params : request params
+ * query  : request query
+ */
+BlogModel.prototype.read = function(params, query) {
+    var self = this;
+    
+    self.findById(params.blog_id, query.user_id);
+
+    self.on('done.findById', function(doc) {
+        self.emit('done', {success : doc});
+    });
+};
+
+BlogModel.prototype.findById = function(blog_id, user_id) {
+    var self = this;
+
+    self._db.get(self._col)
+    .findOne({
+        _id     : objectId(blog_id),
+        user_id : objectId(user_id)
+    })
+    .on('complete', function (err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc) {
+            self.toAngularFormat(doc);
+            self.emit('done.findById', doc);
+        } else {
+            self.emit('error.validation', {error : ['Blog not found.']});
+        }
+    });
+};
+
+// read all blogs for given user id
+BlogModel.prototype.readAll = function(data) {
+    var self = this;
+
+    if (data.tag) { // view by tag
+        var TagModel = require('../models/TagModel');
+        var tag = new TagModel(self._db);
+        tag.getBlogsByTagContent(data, self);
+
+        self
+        .on('done.getBlogsByTagContent', function(doc) {
+            self.readAllByIds(doc.blogs);
+        })
+        .on('done.readAllByIds', function(doc) {
+            self.emit('done', {success : doc});
+        });
+    } else { // view all
+        self._db.get(self._col)
+        .find({user_id : objectId(data.user_id)})
+        .on('complete', function (err, doc) {
+            if (err) {
+                self.emit('error.database', {error : [err.$err]});
+            } else if (doc) {
+                for (var i = 0, j = doc.length; i < j; i++) {
+                    self.toAngularFormat(doc[i]);
+                }
+                self.emit('done', {success : doc});
+            } else {
+                self.emit('error.validation', {error : ['Blog not found.']});
+            }
+        });
+    }
+};
+
+/**
+ * Update a blog
+ *
+ * params : request params
+ * body   : request body
+ */
+BlogModel.prototype.update = function(params, body) {
+    var now = Date.now(),
+    $update = {
+        updated_at : now
+    },
+    self = this;
+
+    if (body.title) {
+        $update.title = body.title;
+    }
+    if (body.content) {
+        $update.content = body.content;
+    }
+
+    self._db.get(self._col)
+    .update(
+        {_id : objectId(params.blog_id)},
+        {$set : $update}
+    )
+    .on('complete', function(err, result) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (result.writeConcernError || result.writeError) {
+            self.emit('error.database', {error : ['Internal error.']});
+        } else {
+            if (result > 0) {
+                self.emit('done', {
+                    success : {
+                        'id'         : params.blog_id,
+                        'updated_at' : now
+                    }
+                });
+            } else {
+                self.emit('error.validation', {error : ['Blog not found.']});
+            }
+        }
+    });
+};
+
+/**
  * Add tag to given blog
  *
- * Request starts with TagModel so its instance emits message
- *
  * tag : tag document
- * tagModel : TagModel instance
+ * emitter : instance emits message
  */
-BlogModel.prototype.addTag = function(blog_id, tag, tagModel) {
+BlogModel.prototype.addTag = function(blog_id, tag, emitter) {
     var self = this;
 
     self._db.get(self._col)
@@ -35,18 +148,18 @@ BlogModel.prototype.addTag = function(blog_id, tag, tagModel) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            tagModel.emit('error.database', {error : [err.$err]});
+            emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            tagModel.emit('error.database', {error : ['Internal error.']});
+            emitter.emit('error.database', {error : ['Internal error.']});
         } else if (result > 0) {
-            tagModel.emit('done', {
+            emitter.emit('done', {
                 success : {
                     id : tag._id.toString(),
                     content : tag.content
                 }
             });
         } else {
-            tagModel.emit('error.validation', {error : ['Blog not found.']});
+            emitter.emit('error.validation', {error : ['Blog not found.']});
         }
     });
 };
@@ -54,11 +167,9 @@ BlogModel.prototype.addTag = function(blog_id, tag, tagModel) {
 /**
  * Delete tag from blog's tags array  
  *
- * Request starts with TagModel so its instance emits message
- *
- * tagModel : TagModel instance
+ * emitter : instance emits message
  */
-BlogModel.prototype.deleteTag = function(tag_id, data, tagModel) {
+BlogModel.prototype.deleteTag = function(tag_id, data, emitter) {
     var self = this;
 
     self._db.get(self._col)
@@ -75,15 +186,49 @@ BlogModel.prototype.deleteTag = function(tag_id, data, tagModel) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            tagModel.emit('error.database', {error : [err.$err]});
+            emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            tagModel.emit('error.database', {error : ['Internal error.']});
+            emitter.emit('error.database', {error : ['Internal error.']});
         } else {
             if (result > 0) {
-                tagModel.emit('done', {success : [true]});
+                emitter.emit('done', {success : [true]});
             } else {
-                tagModel.emit('done', {success : [false]});
+                emitter.emit('done', {success : [false]});
             }
+        }
+    });
+};
+
+// convert to front-end readable format
+BlogModel.prototype.toAngularFormat = function(data) {
+    data.id         = data._id.toString();
+    data.created_at = this.toDate(data.created_at);
+};
+
+BlogModel.prototype.toDate = function(timestamp) {
+    var t = new Date(timestamp);
+    return (t.getMonth() + 1) + '/' + t.getDate() + '/' + t.getFullYear()
+    + ', ' + t.getHours() + ' : ' + t.getMinutes();
+};
+
+/**
+ * Find all blogs with given array of objectId ids  
+ */
+BlogModel.prototype.readAllByIds = function(ids) {
+    var self = this;
+
+    self._db.get(self._col)
+    .find({ _id : {$in : ids}} )
+    .on('complete', function (err, doc) {
+        if (err) {
+            self.emit('error.database', {error : [err.$err]});
+        } else if (doc.length > 0) {
+            for (var i = 0, j = doc.length; i < j; i++) {
+                self.toAngularFormat(doc[i]);
+            }
+            self.emit('done.readAllByIds', doc);
+        } else {
+            self.emit('done.readAllByIds', []);
         }
     });
 };

@@ -208,4 +208,22 @@ TagModel.prototype.deleteById = function(tag_id) {
     });
 };
 
+TagModel.prototype.getBlogsByTagContent = function(data, emitter) {
+    var self = this;
+
+    self._db.get(self._col)
+    .findOne({
+        user_id : objectId(data.user_id),
+        content : data.tag
+    })
+    .on('complete', function(err, doc) {
+        if (err) {
+            emitter.emit('error.database', {error : [err.$err]});
+        } else if (doc) {
+            emitter.emit('done.getBlogsByTagContent', doc);
+        } else {
+            emitter.emit('done', {success : []});
+        }
+    });
+};
 module.exports = TagModel;
