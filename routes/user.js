@@ -1,7 +1,7 @@
 var express = require('express');
 var router = express.Router();
 var validator = require('../services/validator');
-var UserModel = require('../models/User');
+var UserModel = require('../models/UserModel');
 
 router.use(function (req, res, next) {
     if (req.method == 'POST' || req.method == 'OPTIONS') {

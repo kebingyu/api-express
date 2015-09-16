@@ -3,7 +3,7 @@ var router = express.Router();
 var validator = require('../services/validator');
 var blogModel = require('../models/blog');
 var BlogModel = require('../models/BlogModel');
-var UserModel = require('../models/User');
+var UserModel = require('../models/UserModel');
 
 router.use(function (req, res, next) {
     var rules = {
