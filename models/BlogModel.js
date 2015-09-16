@@ -15,6 +15,8 @@ util.inherits(BlogModel, event.EventEmitter);
 /**
  * Add tag to given blog
  *
+ * Request starts with TagModel so its instance emits message
+ *
  * tag : tag document
  * tagModel : TagModel instance
  */
@@ -33,9 +35,9 @@ BlogModel.prototype.addTag = function(blog_id, tag, tagModel) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            tagModel.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            self.emit('error.database', {error : ['Internal error.']});
+            tagModel.emit('error.database', {error : ['Internal error.']});
         } else if (result > 0) {
             tagModel.emit('done', {
                 success : {
@@ -44,7 +46,44 @@ BlogModel.prototype.addTag = function(blog_id, tag, tagModel) {
                 }
             });
         } else {
-            self.emit('error.validation', {error : ['Blog not found.']});
+            tagModel.emit('error.validation', {error : ['Blog not found.']});
+        }
+    });
+};
+
+/**
+ * Delete tag from blog's tags array  
+ *
+ * Request starts with TagModel so its instance emits message
+ *
+ * tagModel : TagModel instance
+ */
+BlogModel.prototype.deleteTag = function(tag_id, data, tagModel) {
+    var self = this;
+
+    self._db.get(self._col)
+    .update(
+        {
+            _id     : objectId(data.blog_id),
+            user_id : objectId(data.user_id)
+        },
+        {$pull : {
+            tags: {
+                id : objectId(tag_id)
+            }
+        }}
+    )
+    .on('complete', function(err, result) {
+        if (err) {
+            tagModel.emit('error.database', {error : [err.$err]});
+        } else if (result.writeConcernError || result.writeError) {
+            tagModel.emit('error.database', {error : ['Internal error.']});
+        } else {
+            if (result > 0) {
+                tagModel.emit('done', {success : [true]});
+            } else {
+                tagModel.emit('done', {success : [false]});
+            }
         }
     });
 };

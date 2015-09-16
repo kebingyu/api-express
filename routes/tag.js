@@ -65,11 +65,20 @@ router.post('/', function(req, res, next) {
 
 // Delete tag from given blog
 router.delete('/:tag_id', function(req, res, next) {
-    tagModel.getInstance()
-        .db(req.db)
-        .delete(req.params, req.query, function(response) {
-            res.json(response);
-        });
+    var tag = new TagModel(req.db);
+
+    tag.delete(req.params, req.query);
+
+    tag
+    .on('done', function(response) {
+        res.json(response);
+    })
+    .on('error.database', function(response) {
+        res.json(response);
+    })
+    .on('error.validation', function(response) {
+        res.json(response);
+    });
 });
 
 module.exports = router;
