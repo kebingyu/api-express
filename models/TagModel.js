@@ -2,10 +2,13 @@ var util     = require('util'),
     event    = require('events'), 
     objectId = require('mongodb').ObjectID;
 
-function TagModel(db) {
+function TagModel(db, emitter) {
     this._db = db; // mongo connection
 
     this._col = 'tag'; // mongo collection
+
+    // Instance to publish and subscribe the events
+    this._emitter = emitter ? emitter : this;
 
     event.EventEmitter.call(this);
 }
@@ -33,13 +36,13 @@ TagModel.prototype.new = function(data) {
     })
     .on('done.addBlog', function(blog_id, doc) {
         // Now add this tag to the given blog's tags array
-        var blog = new BlogModel(self._db);
-        blog.addTag(blog_id, doc, self);
+        var blog = new BlogModel(self._db, self);
+        blog.addTag(blog_id, doc);
     })
     .on('done.createTag', function(blog_id, doc) {
         // Now add this tag to the given blog's tags array
-        var blog = new BlogModel(self._db);
-        blog.addTag(blog_id, doc, self);
+        var blog = new BlogModel(self._db, self);
+        blog.addTag(blog_id, doc);
     });
 };
 
@@ -64,18 +67,18 @@ TagModel.prototype.delete = function(params, query) {
                 self.deleteById(params.tag_id);
             }
         } else { // This blog does not use this tag
-            self.emit('error.validation', {error : ['Wrong tag or blog id.']});
+            self._emitter.emit('error.validation', {error : ['Wrong tag or blog id.']});
         }
     })
     .on('done.updateBlogsArray', function() {
         // Now remove this tag from given blog
-        var blog = new BlogModel(self._db);
-        blog.deleteTag(params.tag_id, query, self);
+        var blog = new BlogModel(self._db, self);
+        blog.deleteTag(params.tag_id, query);
     })
     .on('done.deleteById', function() {
         // Now remove this tag from given blog
-        var blog = new BlogModel(self._db);
-        blog.deleteTag(params.tag_id, query, self);
+        var blog = new BlogModel(self._db, self);
+        blog.deleteTag(params.tag_id, query);
     });
 };
 
@@ -89,16 +92,16 @@ TagModel.prototype.withSameContentCreatedByUser = function(data) {
     })
     .on('complete', function(err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) { // tag already created
             var idx = self.indexInArray(doc.blogs, data.blog_id);
             if (idx == -1) { // This is a new tag for this blog, let's add it
-                self.emit('new.addBlog', data.blog_id, doc);
+                self._emitter.emit('new.addBlog', data.blog_id, doc);
             } else { // Given blog already has this tag, do nothing
-                self.emit('done', {success : []});
+                self._emitter.emit('done', {success : []});
             }
         } else { // No tag found, create new one
-            self.emit('new.createTag', data);
+            self._emitter.emit('new.createTag', data);
         }
     });
 };
@@ -113,13 +116,13 @@ TagModel.prototype.addBlog = function(blog_id, doc) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            self.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else if (result > 0) {
-            self.emit('done.addBlog', blog_id, doc);
+            self._emitter.emit('done.addBlog', blog_id, doc);
         } else {
-            self.emit('done', {success : []});
+            self._emitter.emit('done', {success : []});
         }
     });
 };
@@ -137,11 +140,11 @@ TagModel.prototype.createTag = function(data) {
     })
     .on('complete', function(err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
-            self.emit('done.createTag', data.blog_id, doc);
+            self._emitter.emit('done.createTag', data.blog_id, doc);
         } else {
-            self.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         }
     });
 };
@@ -159,11 +162,11 @@ TagModel.prototype.findById = function(id) {
     })
     .on('complete', function(err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
-            self.emit('done.findById', doc);
+            self._emitter.emit('done.findById', doc);
         } else {
-            self.emit('error.validation', {error : ['Tag not found.']});
+            self._emitter.emit('error.validation', {error : ['Tag not found.']});
         }
     });
 };
@@ -178,14 +181,14 @@ TagModel.prototype.updateBlogsArray = function(doc) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            self.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else {
             if (result > 0) {
-                self.emit('done.updateBlogsArray');
+                self._emitter.emit('done.updateBlogsArray');
             } else {
-                self.emit('done', {success : []});
+                self._emitter.emit('done', {success : []});
             }
         }
     });
@@ -201,9 +204,9 @@ TagModel.prototype.deleteById = function(tag_id) {
     )
     .on('complete', function (err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else {
-            self.emit('done.deleteById');
+            self._emitter.emit('done.deleteById');
         }
     });
 };
@@ -211,7 +214,7 @@ TagModel.prototype.deleteById = function(tag_id) {
 /**
  * For view blogs by tag  
  */
-TagModel.prototype.getBlogsByTagContent = function(data, emitter) {
+TagModel.prototype.getBlogsByTagContent = function(data) {
     var self = this;
 
     self._db.get(self._col)
@@ -221,11 +224,11 @@ TagModel.prototype.getBlogsByTagContent = function(data, emitter) {
     })
     .on('complete', function(err, doc) {
         if (err) {
-            emitter.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
-            emitter.emit('done.getBlogsByTagContent', doc);
+            self._emitter.emit('done.getBlogsByTagContent', doc);
         } else {
-            emitter.emit('done', {success : []});
+            self._emitter.emit('done', {success : []});
         }
     });
 };
@@ -234,7 +237,7 @@ TagModel.prototype.getBlogsByTagContent = function(data, emitter) {
  * Delete blog id from tag's blogs array. Used by BlogModel when 
  * deleting a blog.
  */
-TagModel.prototype.deleteBlog = function(tags, blog_id, emitter) {
+TagModel.prototype.deleteBlog = function(tags, blog_id) {
     var self = this;
 
     self._db.get(self._col)
@@ -245,15 +248,15 @@ TagModel.prototype.deleteBlog = function(tags, blog_id, emitter) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            emitter.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            emitter.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else if (result > 0) {
             // Some tags are updated. Clean up tags with empty blogs array
-            emitter.emit('done.deleteBlog', tags);
+            self._emitter.emit('done.deleteBlog', tags);
         } else {
             // This blog owns no tags. We are done.
-            emitter.emit('done', {success : [true]});
+            self._emitter.emit('done', {success : [true]});
         }
     });
 };
@@ -262,7 +265,7 @@ TagModel.prototype.deleteBlog = function(tags, blog_id, emitter) {
  *  Remove any tags with empty blogs array. Used by BlogModel when
  *  deleting a blog.
  */
-TagModel.prototype.removeOrphanTags = function(tags, emitter) {
+TagModel.prototype.removeOrphanTags = function(tags) {
     var self = this;
 
     self._db.get(self._col)
@@ -274,9 +277,9 @@ TagModel.prototype.removeOrphanTags = function(tags, emitter) {
     )
     .on('complete', function (err, result) {
         if (err) {
-            emitter.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else {
-            emitter.emit('done.removeOrphanTags', {success : [true]});
+            self._emitter.emit('done.removeOrphanTags', {success : [true]});
         }
     });
 };

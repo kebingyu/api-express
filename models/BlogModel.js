@@ -2,10 +2,13 @@ var util     = require('util'),
     event    = require('events'), 
     objectId = require('mongodb').ObjectID;
 
-function BlogModel(db) {
+function BlogModel(db, emitter) {
     this._db = db; // mongo connection
 
     this._col = 'blog'; // mongo collection
+
+    // Instance to publish and subscribe the events
+    this._emitter = emitter ? emitter : this;
 
     event.EventEmitter.call(this);
 }
@@ -32,9 +35,9 @@ BlogModel.prototype.new = function(data) {
     })
     .on('complete', function(err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else {
-            self.emit('done', {
+            self._emitter.emit('done', {
                 success : {
                     'id'         : doc._id.toString(),
                     'created_at' : doc.created_at
@@ -56,7 +59,7 @@ BlogModel.prototype.read = function(params, query) {
     self.findById(params.blog_id, query.user_id);
 
     self.on('done.findById', function(doc) {
-        self.emit('done', {success : doc});
+        self._emitter.emit('done', {success : doc});
     });
 };
 
@@ -70,12 +73,12 @@ BlogModel.prototype.findById = function(blog_id, user_id) {
     })
     .on('complete', function (err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
             self.toAngularFormat(doc);
-            self.emit('done.findById', doc);
+            self._emitter.emit('done.findById', doc);
         } else {
-            self.emit('error.validation', {error : ['Blog not found.']});
+            self._emitter.emit('error.validation', {error : ['Blog not found.']});
         }
     });
 };
@@ -86,29 +89,29 @@ BlogModel.prototype.readAll = function(data) {
 
     if (data.tag) { // view by tag
         var TagModel = require('../models/TagModel');
-        var tag = new TagModel(self._db);
-        tag.getBlogsByTagContent(data, self);
+        var tag = new TagModel(self._db, self);
+        tag.getBlogsByTagContent(data);
 
         self
         .on('done.getBlogsByTagContent', function(doc) {
             self.readAllByIds(doc.blogs);
         })
         .on('done.readAllByIds', function(doc) {
-            self.emit('done', {success : doc});
+            self._emitter.emit('done', {success : doc});
         });
     } else { // view all
         self._db.get(self._col)
         .find({user_id : objectId(data.user_id)})
         .on('complete', function (err, doc) {
             if (err) {
-                self.emit('error.database', {error : [err.$err]});
+                self._emitter.emit('error.database', {error : [err.$err]});
             } else if (doc) {
                 for (var i = 0, j = doc.length; i < j; i++) {
                     self.toAngularFormat(doc[i]);
                 }
-                self.emit('done', {success : doc});
+                self._emitter.emit('done', {success : doc});
             } else {
-                self.emit('error.validation', {error : ['Blog not found.']});
+                self._emitter.emit('error.validation', {error : ['Blog not found.']});
             }
         });
     }
@@ -141,19 +144,19 @@ BlogModel.prototype.update = function(params, body) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            self.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else {
             if (result > 0) {
-                self.emit('done', {
+                self._emitter.emit('done', {
                     success : {
                         'id'         : params.blog_id,
                         'updated_at' : now
                     }
                 });
             } else {
-                self.emit('error.validation', {error : ['Blog not found.']});
+                self._emitter.emit('error.validation', {error : ['Blog not found.']});
             }
         }
     });
@@ -181,31 +184,31 @@ BlogModel.prototype.delete = function(params, query) {
         )
         .on('complete', function (err, result) {
             if (err) {
-                self.emit('error.database', {error : [err.$err]});
+                self._emitter.emit('error.database', {error : [err.$err]});
             } else if (result > 0) {
                 var tags = doc.tags.map(function(t) {return t.id});
                 if (tags.length > 0) {
                     // If the blog contains any tags,
                     // update the relationship as well
                     var TagModel = require('../models/TagModel');
-                    var tag = new TagModel(self._db);
-                    tag.deleteBlog(tags, doc._id.toString(), self);
+                    var tag = new TagModel(self._db, self);
+                    tag.deleteBlog(tags, doc._id.toString());
                 } else {
                     // This blog owns no tag.
-                    self.emit('done', {success : [true]});
+                    self._emitter.emit('done', {success : [true]});
                 }
             } else {
-                self.emit('error.validation', {error : ['Blog not found.']});
+                self._emitter.emit('error.validation', {error : ['Blog not found.']});
             }
         });
     })
     .on('done.deleteBlog', function(tags) {
         var TagModel = require('../models/TagModel');
-        var tag = new TagModel(self._db);
-        tag.removeOrphanTags(tags, self);
+        var tag = new TagModel(self._db, self);
+        tag.removeOrphanTags(tags);
     })
     .on('done.removeOrphanTags', function(response) {
-        self.emit('done', response);
+        self._emitter.emit('done', response);
     });
 };
 
@@ -214,9 +217,8 @@ BlogModel.prototype.delete = function(params, query) {
  * Add tag to given blog
  *
  * tag : tag document
- * emitter : instance emits message
  */
-BlogModel.prototype.addTag = function(blog_id, tag, emitter) {
+BlogModel.prototype.addTag = function(blog_id, tag) {
     var self = this;
 
     self._db.get(self._col)
@@ -231,18 +233,18 @@ BlogModel.prototype.addTag = function(blog_id, tag, emitter) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            emitter.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            emitter.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else if (result > 0) {
-            emitter.emit('done', {
+            self._emitter.emit('done', {
                 success : {
                     id : tag._id.toString(),
                     content : tag.content
                 }
             });
         } else {
-            emitter.emit('error.validation', {error : ['Blog not found.']});
+            self._emitter.emit('error.validation', {error : ['Blog not found.']});
         }
     });
 };
@@ -250,9 +252,8 @@ BlogModel.prototype.addTag = function(blog_id, tag, emitter) {
 /**
  * Delete tag from blog's tags array  
  *
- * emitter : instance emits message
  */
-BlogModel.prototype.deleteTag = function(tag_id, data, emitter) {
+BlogModel.prototype.deleteTag = function(tag_id, data) {
     var self = this;
 
     self._db.get(self._col)
@@ -269,14 +270,14 @@ BlogModel.prototype.deleteTag = function(tag_id, data, emitter) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            emitter.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            emitter.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else {
             if (result > 0) {
-                emitter.emit('done', {success : [true]});
+                self._emitter.emit('done', {success : [true]});
             } else {
-                emitter.emit('done', {success : [false]});
+                self._emitter.emit('done', {success : [false]});
             }
         }
     });
@@ -304,14 +305,14 @@ BlogModel.prototype.readAllByIds = function(ids) {
     .find({ _id : {$in : ids}} )
     .on('complete', function (err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc.length > 0) {
             for (var i = 0, j = doc.length; i < j; i++) {
                 self.toAngularFormat(doc[i]);
             }
-            self.emit('done.readAllByIds', doc);
+            self._emitter.emit('done.readAllByIds', doc);
         } else {
-            self.emit('done.readAllByIds', []);
+            self._emitter.emit('done.readAllByIds', []);
         }
     });
 };

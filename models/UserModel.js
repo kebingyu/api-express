@@ -4,12 +4,15 @@ var util     = require('util'),
     md5      = require('md5'), 
     objectId = require('mongodb').ObjectID;
 
-function UserModel(db) {
+function UserModel(db, emitter) {
     this._db = db; // mongo connection
 
     this._col = 'user'; // mongo collection
 
     this._ttl = 1800000; // token TTL in milliseconds (30 mins)
+
+    // Instance to publish and subscribe the events
+    this._emitter = emitter ? emitter : this;
 
     event.EventEmitter.call(this);
 }
@@ -50,12 +53,12 @@ UserModel.prototype.refreshToken = function(doc) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            self.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else {
             if (result > 0) {
-                self.emit('done', {
+                self._emitter.emit('done', {
                     success : {
                         user_id  : doc._id.toString(),
                         username : doc.username,
@@ -63,7 +66,7 @@ UserModel.prototype.refreshToken = function(doc) {
                     }
                 });
             } else {
-                self.emit('error.validation', {error : ['User not found.']});
+                self._emitter.emit('error.validation', {error : ['User not found.']});
             }
         }
     });
@@ -76,12 +79,12 @@ UserModel.prototype.login = function(data) {
     .findOne({username : data.username})
     .on('complete', function (err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
             if (bcrypt.compareSync(data.password, doc.password)) {
                 if (doc.access_token.value && !self.isExpired(doc.access_token, Date.now())) {
                     // return the existing token
-                    self.emit('done', {
+                    self._emitter.emit('done', {
                         success : {
                             user_id  : doc.user_id.toString(),
                             username : doc.username,
@@ -92,10 +95,10 @@ UserModel.prototype.login = function(data) {
                     self.refreshToken(doc);
                 }
             } else {
-                self.emit('error.validation', {error : ['Please re-enter your password.']});
+                self._emitter.emit('error.validation', {error : ['Please re-enter your password.']});
             }
         } else {
-            self.emit('error.validation', {error : ['Please re-enter your password.']});
+            self._emitter.emit('error.validation', {error : ['Please re-enter your password.']});
         }
     });
 };
@@ -118,14 +121,14 @@ UserModel.prototype.logout = function(data, callback) {
     )
     .on('complete', function(err, result) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (result.writeConcernError || result.writeError) {
-            self.emit('error.database', {error : ['Internal error.']});
+            self._emitter.emit('error.database', {error : ['Internal error.']});
         } else {
             if (result > 0) {
-                self.emit('done', {success : {loggedout : true}});
+                self._emitter.emit('done', {success : {loggedout : true}});
             } else {
-                self.emit('error.validation', {error : ['Invalid access token.']});
+                self._emitter.emit('error.validation', {error : ['Invalid access token.']});
             }
         }
     });
@@ -137,11 +140,11 @@ UserModel.prototype.usernameExists = function(username) {
     .findOne({username : username})
     .on('complete', function (err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
-            self.emit('error.validation', {error : ['This user name has already been taken.']});
+            self._emitter.emit('error.validation', {error : ['This user name has already been taken.']});
         } else {
-            self.emit('usernameNotExists');
+            self._emitter.emit('usernameNotExists');
         }
     });
 };
@@ -152,11 +155,11 @@ UserModel.prototype.emailExists = function(email) {
     .findOne({email : email})
     .on('complete', function (err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
-            self.emit('error.validation', {error : ['This email address has already been taken.']});
+            self._emitter.emit('error.validation', {error : ['This email address has already been taken.']});
         } else {
-            self.emit('emailNotExists');
+            self._emitter.emit('emailNotExists');
         }
     });
 };
@@ -192,16 +195,16 @@ UserModel.prototype.new = function(data) {
         })
         .on('complete', function(err, doc) {
             if (err) {
-                self.emit('error.database', {error : [err.$err]});
+                self._emitter.emit('error.database', {error : [err.$err]});
             } else if (doc) {
-                self.emit('done', {
+                self._emitter.emit('done', {
                     success : {
                         'username'   : doc.username,
                         'created_at' : doc.created_at
                     }
                 });
             } else {
-                self.emit('error.database', {error : ['Internal error.']});
+                self._emitter.emit('error.database', {error : ['Internal error.']});
             }
         });
     });
@@ -217,12 +220,12 @@ UserModel.prototype.read = function(data) {
     .findOne({_id : objectId(data.user_id)})
     .on('complete', function (err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc) {
             self.toAngularFormat(doc);
-            self.emit('done', {success : doc});
+            self._emitter.emit('done', {success : doc});
         } else {
-            self.emit('error.validation', {error : ['User not found.']});
+            self._emitter.emit('error.validation', {error : ['User not found.']});
         }
     });
 };
@@ -248,19 +251,19 @@ UserModel.prototype.update = function(data) {
         )
         .on('complete', function(err, result) {
             if (err) {
-                self.emit('error.database', {error : [err.$err]});
+                self._emitter.emit('error.database', {error : [err.$err]});
             } else if (result.writeConcernError || result.writeError) {
-                self.emit('error.database', {error : ['Internal error.']});
+                self._emitter.emit('error.database', {error : ['Internal error.']});
             } else {
                 if (result > 0) {
-                    self.emit('done', {
+                    self._emitter.emit('done', {
                         success : {
                             username   : data.username,
                             updated_at : currTime
                         }
                     });
                 } else {
-                    self.emit('error.validation', {error : ['User not found.']});
+                    self._emitter.emit('error.validation', {error : ['User not found.']});
                 }
             }
         });
@@ -277,15 +280,15 @@ UserModel.prototype.expired = function(data) {
     .findOne({_id : objectId(data.user_id)})
     .on('complete', function(err, doc) {
         if (err) {
-            self.emit('error.database', {error : [err.$err]});
+            self._emitter.emit('error.database', {error : [err.$err]});
         } else if (doc.access_token.value == data.token) {
             if (self.isExpired(doc.access_token, Date.now())) {
-                self.emit('error.validation', {error : ['Access token expired.']});
+                self._emitter.emit('error.validation', {error : ['Access token expired.']});
             } else {
-                self.emit('allowAccess');
+                self._emitter.emit('allowAccess');
             }
         } else {
-            self.emit('error.validation', {error : ['Invalid access token.']});
+            self._emitter.emit('error.validation', {error : ['Invalid access token.']});
         }
     });
 };
